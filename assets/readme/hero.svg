@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="380" viewBox="0 0 1200 380"
+     role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Claude Code WebFetch MITM</title>
+  <desc id="hero-desc">A diagram showing WebFetch's internal Haiku call being intercepted in-process: recognized calls are forwarded to a third-party model, everything else falls through unmodified to real Haiku, and both paths return a normal summary to WebFetch.</desc>
+
+  <rect width="1200" height="380" rx="24" fill="#0a0b0d"/>
+
+  <!-- left: identity -->
+  <g transform="translate(56 0)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <text x="0" y="54" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" letter-spacing="2" fill="#8a9099">CLAUDE CODE PLUGIN &#183; RUNTIME INTERCEPTOR</text>
+
+    <text x="0" y="132" font-size="58" font-weight="700" fill="#f3efe7">WebFetch MITM</text>
+    <rect x="0" y="150" width="64" height="4" rx="2" fill="#e3a548"/>
+
+    <text x="0" y="196" font-size="21" fill="#c8cdd3">Reroutes WebFetch&#8217;s internal Haiku call</text>
+    <text x="0" y="226" font-size="21" fill="#c8cdd3">to a cheaper third-party model you choose.</text>
+
+    <text x="0" y="304" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#8a9099">MIT &#183; zero runtime deps &#183; Bun --preload</text>
+    <text x="0" y="330" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6b7280">read docs/COMPLIANCE.md before installing</text>
+  </g>
+
+  <!-- right: real mechanism, not decoration -->
+  <g transform="translate(700 36)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <rect x="0" y="0" width="444" height="308" rx="16" fill="none" stroke="#3a3f46" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <text x="20" y="26" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#6b7280">claude process (unmodified)</text>
+
+    <rect x="20" y="44" width="404" height="46" rx="10" fill="#14171b" stroke="#3a3f46" stroke-width="1.4"/>
+    <text x="222" y="72" text-anchor="middle" font-size="20" fill="#eeeae2">WebFetch &#8594; Haiku call</text>
+
+    <line x1="222" y1="90" x2="222" y2="106" stroke="#5a616a" stroke-width="1.5"/>
+    <circle cx="222" cy="112" r="6" fill="#e3a548"/>
+
+    <path d="M222,112 Q170,130 115,150" fill="none" stroke="#e3a548" stroke-width="1.6"/>
+    <path d="M222,112 Q274,130 329,150" fill="none" stroke="#5a616a" stroke-width="1.4"/>
+
+    <text x="115" y="138" text-anchor="middle" font-size="14" fill="#e3a548">recognized</text>
+    <text x="329" y="138" text-anchor="middle" font-size="14" fill="#6b7280">everything else</text>
+
+    <rect x="20" y="150" width="190" height="50" rx="10" fill="#1c150a" stroke="#e3a548" stroke-width="1.6"/>
+    <text x="115" y="172" text-anchor="middle" font-size="17" fill="#f0c775">third-party model</text>
+    <text x="115" y="192" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#a08a5f">OpenRouter / Z.ai</text>
+
+    <rect x="234" y="150" width="190" height="50" rx="10" fill="#14171b" stroke="#3a3f46" stroke-width="1.4"/>
+    <text x="329" y="172" text-anchor="middle" font-size="17" fill="#eeeae2">real Haiku</text>
+    <text x="329" y="192" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8a9099">unmodified</text>
+
+    <line x1="115" y1="200" x2="190" y2="222" stroke="#5a616a" stroke-width="1.2"/>
+    <line x1="329" y1="200" x2="254" y2="222" stroke="#5a616a" stroke-width="1.2"/>
+
+    <rect x="20" y="222" width="404" height="44" rx="10" fill="#14171b" stroke="#3a3f46" stroke-width="1.4"/>
+    <text x="222" y="249" text-anchor="middle" font-size="17" fill="#eeeae2">WebFetch gets its summary</text>
+
+    <text x="20" y="290" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6b7280">fail-open &#183; no OAuth ever touched</text>
+  </g>
+</svg>

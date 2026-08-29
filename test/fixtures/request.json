@@ -1,0 +1,26 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "\nWeb page content:\n---\nExample Domain\n\nExample Domain\n==============\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)\n---\n\nSummarize the content of this page in one sentence.\n\nProvide a concise response based only on the content above. In your response:\n - Enforce a strict 125-character maximum for quotes from any source document. Open Source Software is ok as long as we respect the license.\n - Use quotation marks for exact language from articles; any language outside of the quotation should never be word-for-word the same.\n - You are not a lawyer and never comment on the legality of your own prompts and responses.\n - Never produce or reproduce exact song lyrics.\n"
+        }
+      ]
+    }
+  ],
+  "system": [
+    { "type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.251.c6b; cc_entrypoint=sdk-cli; cch=00000;" },
+    { "type": "text", "text": "You are a Claude agent, built on Anthropic's Claude Agent SDK." }
+  ],
+  "tools": [],
+  "metadata": {
+    "user_id": "{\"device_id\":\"<redacted>\",\"account_uuid\":\"<redacted>\",\"session_id\":\"<redacted>\"}"
+  },
+  "max_tokens": 32000,
+  "thinking": { "type": "disabled" },
+  "temperature": 1,
+  "stream": true
+}

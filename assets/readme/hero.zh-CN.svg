@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="380" viewBox="0 0 1200 380"
+     role="img" aria-labelledby="hero-title-zh hero-desc-zh">
+  <title id="hero-title-zh">Claude Code WebFetch MITM</title>
+  <desc id="hero-desc-zh">示意图：WebFetch 内部的 Haiku 调用在进程内被拦截——命中的调用转发给第三方模型，其余情况原样放行给真实 Haiku，两条路径最终都把摘要返回给 WebFetch。</desc>
+
+  <rect width="1200" height="380" rx="24" fill="#0a0b0d"/>
+
+  <!-- left: identity -->
+  <g transform="translate(56 0)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <text x="0" y="54" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" letter-spacing="1" fill="#8a9099">CLAUDE CODE 插件 &#183; 运行时拦截器</text>
+
+    <text x="0" y="132" font-size="58" font-weight="700" fill="#f3efe7">WebFetch MITM</text>
+    <rect x="0" y="150" width="64" height="4" rx="2" fill="#e3a548"/>
+
+    <text x="0" y="196" font-size="22" fill="#c8cdd3">把 WebFetch 内部的 Haiku 调用</text>
+    <text x="0" y="228" font-size="22" fill="#c8cdd3">重定向到你自选的更便宜模型。</text>
+
+    <text x="0" y="304" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#8a9099">MIT &#183; 零运行时依赖 &#183; Bun --preload</text>
+    <text x="0" y="330" font-size="14" fill="#6b7280">安装前请先读 docs/COMPLIANCE.zh-CN.md</text>
+  </g>
+
+  <!-- right: real mechanism, not decoration -->
+  <g transform="translate(700 36)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <rect x="0" y="0" width="444" height="308" rx="16" fill="none" stroke="#3a3f46" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <text x="20" y="26" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#6b7280">claude 进程（未修改）</text>
+
+    <rect x="20" y="44" width="404" height="46" rx="10" fill="#14171b" stroke="#3a3f46" stroke-width="1.4"/>
+    <text x="222" y="72" text-anchor="middle" font-size="19" fill="#eeeae2">WebFetch &#8594; Haiku 调用</text>
+
+    <line x1="222" y1="90" x2="222" y2="106" stroke="#5a616a" stroke-width="1.5"/>
+    <circle cx="222" cy="112" r="6" fill="#e3a548"/>
+
+    <path d="M222,112 Q170,130 115,150" fill="none" stroke="#e3a548" stroke-width="1.6"/>
+    <path d="M222,112 Q274,130 329,150" fill="none" stroke="#5a616a" stroke-width="1.4"/>
+
+    <text x="115" y="138" text-anchor="middle" font-size="14" fill="#e3a548">命中</text>
+    <text x="329" y="138" text-anchor="middle" font-size="14" fill="#6b7280">其余情况</text>
+
+    <rect x="20" y="150" width="190" height="50" rx="10" fill="#1c150a" stroke="#e3a548" stroke-width="1.6"/>
+    <text x="115" y="172" text-anchor="middle" font-size="17" fill="#f0c775">第三方模型</text>
+    <text x="115" y="192" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#a08a5f">OpenRouter / Z.ai</text>
+
+    <rect x="234" y="150" width="190" height="50" rx="10" fill="#14171b" stroke="#3a3f46" stroke-width="1.4"/>
+    <text x="329" y="172" text-anchor="middle" font-size="17" fill="#eeeae2">真实 Haiku</text>
+    <text x="329" y="192" text-anchor="middle" font-size="13" fill="#8a9099">未修改</text>
+
+    <line x1="115" y1="200" x2="190" y2="222" stroke="#5a616a" stroke-width="1.2"/>
+    <line x1="329" y1="200" x2="254" y2="222" stroke="#5a616a" stroke-width="1.2"/>
+
+    <rect x="20" y="222" width="404" height="44" rx="10" fill="#14171b" stroke="#3a3f46" stroke-width="1.4"/>
+    <text x="222" y="249" text-anchor="middle" font-size="17" fill="#eeeae2">WebFetch 拿到摘要</text>
+
+    <text x="20" y="290" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6b7280">fail-open &#183; 从不触碰 OAuth</text>
+  </g>
+</svg>

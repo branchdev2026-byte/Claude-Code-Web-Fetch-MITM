@@ -1,0 +1,11 @@
+Web page content:
+---
+{pageMarkdown}
+---
+
+{userPrompt}
+
+Summarize the content above using only what is provided. Keep any quoted
+excerpts short and clearly marked as quotes; paraphrase instead of
+reproducing long verbatim passages (e.g. full lyrics or extended article
+text).
