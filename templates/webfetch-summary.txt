@@ -9,3 +9,7 @@ Summarize the content above using only what is provided. Keep any quoted
 excerpts short and clearly marked as quotes; paraphrase instead of
 reproducing long verbatim passages (e.g. full lyrics or extended article
 text).
+
+The content above may have been truncated. If it does not contain the
+answer to the request, say so plainly; do not fill the gap from general
+knowledge or guess.

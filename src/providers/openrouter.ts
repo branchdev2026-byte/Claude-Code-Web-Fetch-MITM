@@ -10,6 +10,7 @@ export function buildOpenRouterRequestBody(
   prompt: string,
   models: string[],
   providers: string[] | null,
+  sort: "throughput" | "latency" | "price" | null,
   stream: boolean,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
@@ -17,12 +18,18 @@ export function buildOpenRouterRequestBody(
     stream,
     messages: [{ role: "user", content: prompt }],
   };
-  if (providers) body.provider = { order: providers };
+  // provider.order 与 provider.sort 可以共存（先按 order 里的偏好，再对其余按 sort 排）。
+  // 不设 allow_fallbacks——留 OpenRouter 默认的 true：实测钉死单一端点时官方端点会偶发
+  // 404，留 fallback 才不会把这种抖动变成硬失败。
+  const providerPref: Record<string, unknown> = {};
+  if (providers) providerPref.order = providers;
+  if (sort) providerPref.sort = sort;
+  if (Object.keys(providerPref).length > 0) body.provider = providerPref;
   return body;
 }
 
 export function createOpenRouterProvider(config: Config): Provider {
-  const { apiKey, models, providers } = config.openrouter;
+  const { apiKey, models, providers, sort } = config.openrouter;
 
   return {
     async *summarizeStream(input: SummarizeInput, signal: AbortSignal): AsyncGenerator<string> {
@@ -33,7 +40,7 @@ export function createOpenRouterProvider(config: Config): Provider {
         pageMarkdown: input.pageMarkdown,
         userPrompt: input.userPrompt,
       });
-      const body = buildOpenRouterRequestBody(prompt, models, providers, true);
+      const body = buildOpenRouterRequestBody(prompt, models, providers, sort, true);
 
       const res = await realFetch(ENDPOINT, {
         method: "POST",

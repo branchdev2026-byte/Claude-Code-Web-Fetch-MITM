@@ -51,6 +51,9 @@ export interface Config {
     apiKey: string | null;
     models: string[];
     providers: string[] | null;
+    // OpenRouter 算力商路由排序偏好（provider.sort）。null = 不发这个字段，用
+    // OpenRouter 默认（按价格升序，会落到最便宜也最慢的端点）。
+    sort: "throughput" | "latency" | "price" | null;
   };
   zai: {
     apiKey: string | null;
@@ -78,6 +81,26 @@ export function loadConfig(): Config {
   const openrouterProvidersRaw = process.env.WEBFETCH_MITM_OPENROUTER_PROVIDERS;
   const openrouterProviders = openrouterProvidersRaw ? splitCsv(openrouterProvidersRaw) : null;
 
+  // 未设置 → 默认 throughput（WebFetch 卡在 CC 主循环上，延迟优先）。
+  // 显式设为空字符串 → null（回退到 OpenRouter 默认按价格路由）。
+  const openrouterSortRaw = process.env.WEBFETCH_MITM_OPENROUTER_SORT;
+  const openrouterSort =
+    openrouterSortRaw === undefined
+      ? "throughput"
+      : openrouterSortRaw.trim() === ""
+        ? null
+        : openrouterSortRaw.trim();
+  if (
+    openrouterSort !== null &&
+    openrouterSort !== "throughput" &&
+    openrouterSort !== "latency" &&
+    openrouterSort !== "price"
+  ) {
+    throw new Error(
+      `WEBFETCH_MITM_OPENROUTER_SORT must be "throughput", "latency", "price" or empty, got: ${JSON.stringify(openrouterSortRaw)}`,
+    );
+  }
+
   return {
     enableTargets,
     provider: providerRaw as "openrouter" | "zai" | null,
@@ -87,6 +110,7 @@ export function loadConfig(): Config {
         process.env.WEBFETCH_MITM_OPENROUTER_MODELS ?? DEFAULT_OPENROUTER_MODELS,
       ),
       providers: openrouterProviders && openrouterProviders.length > 0 ? openrouterProviders : null,
+      sort: openrouterSort as "throughput" | "latency" | "price" | null,
     },
     zai: {
       apiKey: process.env.WEBFETCH_MITM_ZAI_API_KEY?.trim() || null,

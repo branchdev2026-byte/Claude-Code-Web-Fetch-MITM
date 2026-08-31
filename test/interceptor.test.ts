@@ -25,7 +25,7 @@ beforeAll(() => {
   const config: Config = {
     enableTargets: ["webfetch"],
     provider: null,
-    openrouter: { apiKey: null, models: [], providers: null },
+    openrouter: { apiKey: null, models: [], providers: null, sort: null },
     zai: { apiKey: null, models: [] },
     promptFile: null,
   };

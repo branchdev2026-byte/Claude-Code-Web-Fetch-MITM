@@ -53,7 +53,7 @@ function circuitBreakerConfig(): Config {
   return {
     enableTargets: ["webfetch"],
     provider: "openrouter",
-    openrouter: { apiKey: "test-key", models: ["m1"], providers: null },
+    openrouter: { apiKey: "test-key", models: ["m1"], providers: null, sort: null },
     zai: { apiKey: null, models: [] },
     promptFile: null,
   };
