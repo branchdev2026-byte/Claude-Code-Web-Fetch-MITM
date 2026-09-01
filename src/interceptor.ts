@@ -2,12 +2,14 @@ import type { Config } from "./config";
 import { buildEnabledRules, matchRequest } from "./matchRules/registry";
 import type { AnthropicMessagesRequestBody } from "./matchRules/types";
 import { extractWebFetchInputs } from "./matchRules/webfetch";
+import { extractWebSearchQuery } from "./matchRules/websearch";
 import { loadTemplate } from "./promptTemplate";
 import { createOpenRouterProvider } from "./providers/openrouter";
-import type { Provider } from "./providers/types";
+import type { Provider, WebSearchProvider } from "./providers/types";
+import { websearchStubProvider } from "./providers/websearchStub";
 import { createZaiProvider } from "./providers/zai";
 import { realFetch } from "./realFetch";
-import { buildSyntheticResponse } from "./responseSynthesizer";
+import { buildSyntheticResponse, buildWebSearchSyntheticResponse } from "./responseSynthesizer";
 import { collectStreamWithIdleTimeout, isValidSummary, StreamCollectTimeoutError } from "./streamCollect";
 
 const ANTHROPIC_MESSAGES_PATH = "/v1/messages";
@@ -16,12 +18,16 @@ const ANTHROPIC_HOST = "api.anthropic.com";
 // 赌博：调小了经常白白 fail-open、拿不到省钱收益，调大了在 provider 真卡死时让 WebFetch
 // 白等一大段时间。改成流式空闲超时（doc/plan/fix/2026-08-29_provider超时策略改为流式空闲超时.md）：
 // 只要片段还在陆续到达就不算超时，能扛住长尾延迟；IDLE 覆盖"卡住不动"，TOTAL 兜底"一直有
-// 片段但永远不完"的极端情况。
+// 片段但永远不完"的极端情况。websearch 的 provider 接口是一次性 Promise（不是流式生成器，
+// 见 providers/types.ts 与设计文档第 9.2 节），复用同一个 TOTAL_TIMEOUT_MS 做单一总超时，
+// 不需要 idle timeout 这层。
 const IDLE_TIMEOUT_MS = 20_000;
 const TOTAL_TIMEOUT_MS = 90_000;
-// 连续失败达到这个次数后熔断：本进程剩余生命周期内不再尝试 provider，直接纯透传。
+// 连续失败达到这个次数后熔断：本进程剩余生命周期内不再尝试该调用点的 provider，直接纯透传。
 // 见 doc/plan/fix/2026-08-29_provider响应结构漂移熔断.md——防的是"provider 响应格式
-// 变了但没人发现，之后每次 WebFetch 都要空等一次超时预算才摔回 Haiku"这种隐性变慢。
+// 变了但没人发现，之后每次调用都要空等一次超时预算才摔回真实 Haiku"这种隐性变慢。
+// 设计文档第 9.5 节：熔断按调用点（rule id）独立计数，不共享——webfetch/websearch 的
+// provider 完全独立，共享一个计数器会让一边的失败拖累另一边提前熔断。
 const CIRCUIT_BREAKER_THRESHOLD = 3;
 
 function log(msg: string): void {
@@ -48,6 +54,18 @@ function resolveProvider(config: Config): Provider | null {
   return null;
 }
 
+// 设计文档第 9.4 节：本期固定返回占位 provider，不读任何 config 字段。保留这个函数、
+// 保留“无 provider 即 fail-open”的判断分支（跟 webfetch 对称），是为了下一期切换真实
+// 后端时只改这一个函数，不用动 interceptor 主流程。
+function resolveWebSearchProvider(_config: Config): WebSearchProvider | null {
+  return websearchStubProvider;
+}
+
+interface CircuitState {
+  consecutiveFailures: number;
+  circuitOpen: boolean;
+}
+
 export function installInterceptor(config: Config): void {
   const enabledRules = buildEnabledRules(config);
   if (enabledRules.length === 0) {
@@ -56,26 +74,36 @@ export function installInterceptor(config: Config): void {
   }
 
   const provider = resolveProvider(config);
+  const webSearchProvider = resolveWebSearchProvider(config);
   const promptTemplate = loadTemplate(config);
 
-  // 熔断状态：进程内内存变量，不跨进程持久化——下次重启 claude 拿到新的 preload
-  // 实例，重新给一次尝试机会，不需要额外的重置逻辑。
-  let consecutiveFailures = 0;
-  let circuitOpen = false;
+  // 熔断状态：进程内内存变量，按 rule id 独立维护，不跨进程持久化——下次重启 claude
+  // 拿到新的 preload 实例，重新给一次尝试机会，不需要额外的重置逻辑。
+  const circuits = new Map<string, CircuitState>();
 
-  function recordProviderFailure(): void {
-    consecutiveFailures++;
-    if (!circuitOpen && consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
-      circuitOpen = true;
+  function circuitFor(ruleId: string): CircuitState {
+    let state = circuits.get(ruleId);
+    if (!state) {
+      state = { consecutiveFailures: 0, circuitOpen: false };
+      circuits.set(ruleId, state);
+    }
+    return state;
+  }
+
+  function recordProviderFailure(ruleId: string): void {
+    const state = circuitFor(ruleId);
+    state.consecutiveFailures++;
+    if (!state.circuitOpen && state.consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+      state.circuitOpen = true;
       alert(
-        `${consecutiveFailures} consecutive provider failures — circuit breaker OPEN, ` +
+        `[${ruleId}] ${state.consecutiveFailures} consecutive provider failures — circuit breaker OPEN, ` +
           `falling back to passthrough for the rest of this process's lifetime (restart claude to retry)`,
       );
     }
   }
 
-  function recordProviderSuccess(): void {
-    consecutiveFailures = 0;
+  function recordProviderSuccess(ruleId: string): void {
+    circuitFor(ruleId).consecutiveFailures = 0;
   }
 
   const wrappedFetchImpl = async (
@@ -133,13 +161,51 @@ export function installInterceptor(config: Config): void {
       return realFetch(input as any, init);
     }
 
-    // strict match: 尝试转发。
+    const ruleId = matched.rule.id;
+
+    if (ruleId === "websearch") {
+      if (!webSearchProvider) {
+        log(`strict match on "websearch" but no provider configured, fail-open`);
+        return realFetch(input as any, init);
+      }
+      if (circuitFor(ruleId).circuitOpen) {
+        log(`circuit breaker open, skipping provider, fail-open [${ruleId}]`);
+        return realFetch(input as any, init);
+      }
+
+      try {
+        const query = extractWebSearchQuery(body);
+        if (!query) {
+          log(`strict match on "websearch" but failed to extract query, fail-open`);
+          return realFetch(input as any, init);
+        }
+
+        let results: Awaited<ReturnType<WebSearchProvider["search"]>>;
+        try {
+          results = await webSearchProvider.search(query, AbortSignal.timeout(TOTAL_TIMEOUT_MS));
+        } catch (err) {
+          log(`websearch provider failed, fail-open: ${String(err)}`);
+          recordProviderFailure(ruleId);
+          return realFetch(input as any, init);
+        }
+
+        recordProviderSuccess(ruleId);
+        log(`websearch forwarded, ${results.length} result(s)`);
+        return buildWebSearchSyntheticResponse(body.model ?? "claude-haiku-4-5-20251001", query, results);
+      } catch (err) {
+        log(`unexpected error, fail-open: ${String(err)}`);
+        recordProviderFailure(ruleId);
+        return realFetch(input as any, init);
+      }
+    }
+
+    // strict match on webfetch: 尝试转发。
     if (!provider) {
-      log(`strict match on "${matched.rule.id}" but no provider configured, fail-open`);
+      log(`strict match on "${ruleId}" but no provider configured, fail-open`);
       return realFetch(input as any, init);
     }
 
-    if (circuitOpen) {
+    if (circuitFor(ruleId).circuitOpen) {
       log(`circuit breaker open, skipping provider, fail-open`);
       return realFetch(input as any, init);
     }
@@ -147,7 +213,7 @@ export function installInterceptor(config: Config): void {
     try {
       const inputs = extractWebFetchInputs(body);
       if (!inputs) {
-        log(`strict match on "${matched.rule.id}" but failed to extract inputs, fail-open`);
+        log(`strict match on "${ruleId}" but failed to extract inputs, fail-open`);
         return realFetch(input as any, init);
       }
 
@@ -163,22 +229,22 @@ export function installInterceptor(config: Config): void {
         const reason =
           err instanceof StreamCollectTimeoutError ? `${err.kind} timeout (${err.message})` : String(err);
         log(`provider failed, fail-open: ${reason}`);
-        recordProviderFailure();
+        recordProviderFailure(ruleId);
         return realFetch(input as any, init);
       }
 
       if (!isValidSummary(text)) {
         log(`provider returned invalid summary (empty or too long, ${text.length} chars), fail-open`);
-        recordProviderFailure();
+        recordProviderFailure(ruleId);
         return realFetch(input as any, init);
       }
 
-      recordProviderSuccess();
+      recordProviderSuccess(ruleId);
       log(`forwarded to ${config.provider}, ${text.length} chars summary`);
       return buildSyntheticResponse(body.model ?? "claude-haiku-4-5-20251001", text);
     } catch (err) {
       log(`unexpected error, fail-open: ${String(err)}`);
-      recordProviderFailure();
+      recordProviderFailure(ruleId);
       return realFetch(input as any, init);
     }
   };

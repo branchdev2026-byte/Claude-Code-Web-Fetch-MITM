@@ -10,3 +10,15 @@ export interface Provider {
   // fail-open，只能把已产出内容原样收尾。
   summarizeStream(input: SummarizeInput, signal: AbortSignal): AsyncGenerator<string>;
 }
+
+// websearch 的搜索结果天然一次性到齐，不是逐块生成的文本——不用 webfetch 那种流式接口
+// （设计文档第 9.2 节）。interceptor 侧对应用一个总超时（AbortSignal.timeout），不需要
+// streamCollect.ts 的空闲超时机制。
+export interface SearchResult {
+  title: string;
+  url: string;
+}
+
+export interface WebSearchProvider {
+  search(query: string, signal: AbortSignal): Promise<SearchResult[]>;
+}
