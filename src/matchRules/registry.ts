@@ -5,7 +5,8 @@ import { websearchRule } from "./websearch";
 
 // websearchRule 跟 webfetchRule 一样走 config.enableTargets 开关（需要在
 // WEBFETCH_MITM_ENABLE_TARGETS 里显式加上 "websearch" 才会参与匹配）。命中后 interceptor.ts
-// 走占位 provider 转发，见设计文档第 9 节、providers/websearchStub.ts。
+// 转发给 src/websearch/ 下的 agentic 搜索后端，见设计文档
+// doc/design/2026-09-02_websearch-agentic-search_v1.md。
 const ALL_RULES: MatchRule[] = [webfetchRule, websearchRule];
 
 export interface MatchResult {

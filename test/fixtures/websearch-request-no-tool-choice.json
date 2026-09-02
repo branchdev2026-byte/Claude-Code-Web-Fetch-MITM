@@ -1,0 +1,29 @@
+{
+  "model": "claude-sonnet-5",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Perform a web search for the query: latest Bun release notes"
+        }
+      ]
+    }
+  ],
+  "system": [
+    { "type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.258.abc; cc_entrypoint=sdk-cli; cch=00000;" },
+    { "type": "text", "text": "You are a Claude agent, built on Anthropic's Claude Agent SDK." },
+    { "type": "text", "text": "You are an assistant for performing a web search tool use" }
+  ],
+  "tools": [
+    { "type": "web_search_20250305", "name": "web_search", "max_uses": 8 }
+  ],
+  "metadata": {
+    "user_id": "{\"device_id\":\"<redacted>\",\"account_uuid\":\"<redacted>\",\"session_id\":\"<redacted>\"}"
+  },
+  "max_tokens": 32000,
+  "thinking": { "type": "disabled" },
+  "temperature": 1,
+  "stream": true
+}

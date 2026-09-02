@@ -28,6 +28,13 @@ beforeAll(() => {
     openrouter: { apiKey: null, models: [], providers: null, sort: null },
     zai: { apiKey: null, models: [] },
     promptFile: null,
+    websearch: {
+      backend: "searxng",
+      searxng: { url: null, categories: "general" },
+      reason: { apiKey: null, baseUrl: "https://openrouter.ai/api/v1", model: "m", effort: "low", sort: null },
+      summary: { apiKey: null, baseUrl: "https://openrouter.ai/api/v1", model: "m", sort: null },
+      maxSources: 20,
+    },
   };
   installInterceptor(config);
 });

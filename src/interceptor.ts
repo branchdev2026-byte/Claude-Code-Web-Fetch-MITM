@@ -6,11 +6,13 @@ import { extractWebSearchQuery } from "./matchRules/websearch";
 import { loadTemplate } from "./promptTemplate";
 import { createOpenRouterProvider } from "./providers/openrouter";
 import type { Provider, WebSearchProvider } from "./providers/types";
-import { websearchStubProvider } from "./providers/websearchStub";
 import { createZaiProvider } from "./providers/zai";
 import { realFetch } from "./realFetch";
 import { buildSyntheticResponse, buildWebSearchSyntheticResponse } from "./responseSynthesizer";
 import { collectStreamWithIdleTimeout, isValidSummary, StreamCollectTimeoutError } from "./streamCollect";
+import { createSearxngBackend } from "./websearch/backends/searxng";
+import { ensureManagedSearxngRunning } from "./websearch/backends/searxngLifecycle";
+import { createWebSearchProvider } from "./websearch/provider";
 
 const ANTHROPIC_MESSAGES_PATH = "/v1/messages";
 const ANTHROPIC_HOST = "api.anthropic.com";
@@ -18,11 +20,16 @@ const ANTHROPIC_HOST = "api.anthropic.com";
 // 赌博：调小了经常白白 fail-open、拿不到省钱收益，调大了在 provider 真卡死时让 WebFetch
 // 白等一大段时间。改成流式空闲超时（doc/plan/fix/2026-08-29_provider超时策略改为流式空闲超时.md）：
 // 只要片段还在陆续到达就不算超时，能扛住长尾延迟；IDLE 覆盖"卡住不动"，TOTAL 兜底"一直有
-// 片段但永远不完"的极端情况。websearch 的 provider 接口是一次性 Promise（不是流式生成器，
-// 见 providers/types.ts 与设计文档第 9.2 节），复用同一个 TOTAL_TIMEOUT_MS 做单一总超时，
-// 不需要 idle timeout 这层。
+// 片段但永远不完"的极端情况。这两个常量只用于 webfetch——websearch 的 provider 接口是
+// 一次性 Promise（不是流式生成器，见 providers/types.ts），用下面独立的
+// WEBSEARCH_HARD_TIMEOUT_MS 做单一总超时，不需要 idle timeout 这层。
 const IDLE_TIMEOUT_MS = 20_000;
 const TOTAL_TIMEOUT_MS = 90_000;
+// websearch 的技术安全阀（设计文档第 13 节）：不是业务参数，不经 env，源码里的硬编码常量。
+// 比 webfetch 的 TOTAL_TIMEOUT_MS 更宽，因为这条流水线可能有多次 LLM 往返（规划、反思若干
+// 轮）+ 并行富化，正常情况下用不到——K3 自行决定的时间预算加上富化阶段的固定超时，跑不到
+// 这个量级；一旦真的触发，视为异常，计入熔断失败计数，不是常规路径。
+const WEBSEARCH_HARD_TIMEOUT_MS = 120_000;
 // 连续失败达到这个次数后熔断：本进程剩余生命周期内不再尝试该调用点的 provider，直接纯透传。
 // 见 doc/plan/fix/2026-08-29_provider响应结构漂移熔断.md——防的是"provider 响应格式
 // 变了但没人发现，之后每次调用都要空等一次超时预算才摔回真实 Haiku"这种隐性变慢。
@@ -54,11 +61,43 @@ function resolveProvider(config: Config): Provider | null {
   return null;
 }
 
-// 设计文档第 9.4 节：本期固定返回占位 provider，不读任何 config 字段。保留这个函数、
-// 保留“无 provider 即 fail-open”的判断分支（跟 webfetch 对称），是为了下一期切换真实
-// 后端时只改这一个函数，不用动 interceptor 主流程。
-function resolveWebSearchProvider(_config: Config): WebSearchProvider | null {
-  return websearchStubProvider;
+// 设计文档第 3、6.3、14 节。保持同步函数（不 await 任何东西）——installInterceptor() 本身
+// 不是 async，跟现有代码风格一致。
+function resolveWebSearchProvider(config: Config): WebSearchProvider | null {
+  const { websearch } = config;
+  if (!websearch.reason.apiKey) return null; // 无 provider，走现有 fail-open 分支。
+
+  const resolveUrl: () => Promise<string | null> = websearch.searxng.url
+    ? async () => websearch.searxng.url
+    : ensureManagedSearxngRunning;
+
+  if (!websearch.searxng.url) {
+    // SEARXNG_URL 未设置（自管理路径）：后台发起一次，不 await——让它现在就开始跑，不等到
+    // 真正 search() 时才第一次触发（设计第 6.3 节"后台发起、不阻塞进程启动"）。
+    void ensureManagedSearxngRunning();
+  }
+
+  const backend = createSearxngBackend(resolveUrl, websearch.searxng.categories);
+
+  return createWebSearchProvider({
+    backend,
+    reason: {
+      apiKey: websearch.reason.apiKey,
+      baseUrl: websearch.reason.baseUrl,
+      model: websearch.reason.model,
+      effort: websearch.reason.effort,
+      sort: websearch.reason.sort,
+    },
+    summary: {
+      // summary.apiKey 已经在 config.ts 里做过"为空回退用 reason.apiKey"的处理，这里
+      // reason.apiKey 非空已经在上面判断过，summary.apiKey 必然也非空。
+      apiKey: websearch.summary.apiKey ?? websearch.reason.apiKey,
+      baseUrl: websearch.summary.baseUrl,
+      model: websearch.summary.model,
+      sort: websearch.summary.sort,
+    },
+    maxSources: websearch.maxSources,
+  });
 }
 
 interface CircuitState {
@@ -182,7 +221,7 @@ export function installInterceptor(config: Config): void {
 
         let results: Awaited<ReturnType<WebSearchProvider["search"]>>;
         try {
-          results = await webSearchProvider.search(query, AbortSignal.timeout(TOTAL_TIMEOUT_MS));
+          results = await webSearchProvider.search(query, AbortSignal.timeout(WEBSEARCH_HARD_TIMEOUT_MS));
         } catch (err) {
           log(`websearch provider failed, fail-open: ${String(err)}`);
           recordProviderFailure(ruleId);
@@ -190,8 +229,17 @@ export function installInterceptor(config: Config): void {
         }
 
         recordProviderSuccess(ruleId);
-        log(`websearch forwarded, ${results.length} result(s)`);
-        return buildWebSearchSyntheticResponse(body.model ?? "claude-haiku-4-5-20251001", query, results);
+        log(
+          `websearch forwarded, ${results.sources.length} source(s), summary ${
+            results.summary.length ? `${results.summary.length} chars` : "empty (degraded)"
+          }`,
+        );
+        return buildWebSearchSyntheticResponse(
+          body.model ?? "claude-haiku-4-5-20251001",
+          query,
+          results.sources,
+          results.summary,
+        );
       } catch (err) {
         log(`unexpected error, fail-open: ${String(err)}`);
         recordProviderFailure(ruleId);

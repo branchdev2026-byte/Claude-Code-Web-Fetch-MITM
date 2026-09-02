@@ -46,12 +46,29 @@ describe("extractWebFetchInputs", () => {
 });
 
 import { extractWebSearchQuery, websearchRule } from "../src/matchRules/websearch";
+import fixtureWebSearchNoToolChoice from "./fixtures/websearch-request-no-tool-choice.json";
 import fixtureWebSearchRequest from "./fixtures/websearch-request.json";
 
 describe("websearchRule", () => {
   test("strict match on real captured request (doc/ref websearch-haiku子请求实测抓包)", () => {
     expect(websearchRule.strictMatch(fixtureWebSearchRequest as any)).toBe(true);
     expect(websearchRule.looseMatch(fixtureWebSearchRequest as any)).toBe(true);
+  });
+
+  // 设计文档第 12 节信号 B：useHaiku 关闭时 CC 不发 tool_choice，靠 system 固定文案 +
+  // 工具定义 + 最后一条 user 消息的查询前缀三者组合识别。
+  test("strict match via signal B when tool_choice is absent (useHaiku=false shape)", () => {
+    expect(websearchRule.strictMatch(fixtureWebSearchNoToolChoice as any)).toBe(true);
+    expect(websearchRule.looseMatch(fixtureWebSearchNoToolChoice as any)).toBe(true);
+  });
+
+  test("signal B requires all three parts: system marker alone is not enough without the query prefix", () => {
+    const body = {
+      ...fixtureWebSearchNoToolChoice,
+      messages: [{ role: "user", content: [{ type: "text", text: "not the expected prefix" }] }],
+    };
+    expect(websearchRule.strictMatch(body as any)).toBe(false);
+    expect(websearchRule.looseMatch(body as any)).toBe(true);
   });
 
   test("strict match tolerates a newer tool type version (prefix match, not exact string)", () => {

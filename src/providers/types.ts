@@ -11,14 +11,7 @@ export interface Provider {
   summarizeStream(input: SummarizeInput, signal: AbortSignal): AsyncGenerator<string>;
 }
 
-// websearch 的搜索结果天然一次性到齐，不是逐块生成的文本——不用 webfetch 那种流式接口
-// （设计文档第 9.2 节）。interceptor 侧对应用一个总超时（AbortSignal.timeout），不需要
-// streamCollect.ts 的空闲超时机制。
-export interface SearchResult {
-  title: string;
-  url: string;
-}
-
-export interface WebSearchProvider {
-  search(query: string, signal: AbortSignal): Promise<SearchResult[]>;
-}
+// websearch 的搜索结果类型定义在 src/websearch/types.ts（那个模块 transport 无关，不引用
+// 任何 Anthropic 类型，是本项目对外的权威定义）。这里只是 re-export，保持调用点习惯从
+// providers/types 统一取类型的既有风格。
+export type { WebSearchProvider, WebSearchResult } from "../websearch/types";

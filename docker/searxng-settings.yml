@@ -1,0 +1,20 @@
+# SearXNG 配置模板 —— websearch 调用点自管理容器（src/websearch/backends/searxngLifecycle.ts）
+# 用的配置来源。这份文件本身只作为模板存在版本控制里，不直接挂载给容器：真正挂载的是
+# searxngLifecycle.ts 在运行时渲染出的一份临时副本（同样的内容，但 secret_key 换成随机生成的
+# 值，写到系统临时目录），所以这里的 secret_key 只是占位符，不含任何真实密钥。
+#
+# 设计依据：doc/design/2026-09-02_websearch-agentic-search_v1.md 第 6.3 节。
+#
+# search.formats 必须包含 json —— SearXNG 官方默认设置只开 html，2026-09-02 实测确认不加这行
+# JSON 检索端点会直接 403，是本项目 websearch 后端能工作的硬性前提。
+
+use_default_settings: true
+
+server:
+  secret_key: "REPLACED_AT_RUNTIME_WITH_RANDOM_VALUE"
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json

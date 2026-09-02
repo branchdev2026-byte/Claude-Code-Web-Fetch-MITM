@@ -8,6 +8,10 @@ import type { AnthropicMessagesRequestBody, MatchRule } from "./types";
 const WEB_SEARCH_TOOL_NAME = "web_search";
 const WEB_SEARCH_TYPE_PREFIX = "web_search_";
 const QUERY_PREFIX = "Perform a web search for the query: ";
+// 设计文档第 12 节信号 B：`useHaiku` 关闭时 CC 不发 tool_choice 强制字段，改用这句固定
+// system 文案标识这是一次 websearch 子请求——跟信号 A（tool_choice 强制）互为补充，覆盖
+// `useHaiku` 开关的两种状态。
+const SYSTEM_MARKER = "You are an assistant for performing a web search tool use";
 
 function hasWebSearchToolByName(body: AnthropicMessagesRequestBody): boolean {
   if (!Array.isArray(body.tools)) return false;
@@ -34,15 +38,33 @@ function toolChoiceForcesWebSearch(body: AnthropicMessagesRequestBody): boolean 
   return typeof toolChoice === "object" && toolChoice !== null && toolChoice.name === WEB_SEARCH_TOOL_NAME;
 }
 
+function hasSystemMarker(body: AnthropicMessagesRequestBody): boolean {
+  const system = body.system as unknown;
+  return (
+    Array.isArray(system) &&
+    system.some((s) => typeof s === "object" && s !== null && (s as Record<string, unknown>).text === SYSTEM_MARKER)
+  );
+}
+
+function lastUserMessageHasQueryPrefix(body: AnthropicMessagesRequestBody): boolean {
+  return extractWebSearchQuery(body) !== null;
+}
+
 export const websearchRule: MatchRule = {
   id: "websearch",
   // 宽信号：工具列表里存在叫 web_search 的条目，不要求 tool_choice/type 精确匹配。
   looseMatch(body) {
     return hasWebSearchToolByName(body);
   },
-  // 严格信号：tool_choice 强制指向 web_search，且工具定义里 type 是官方服务端工具前缀。
+  // 严格信号（设计文档第 12 节，A、B 任一成立即命中，覆盖 useHaiku 开关的两种状态）：
+  // A：tool_choice 强制指向 web_search，且工具定义里 type 是官方服务端工具前缀。
+  // B：system 里有固定文案标记这是一次 websearch 子请求，且工具定义匹配，且最后一条
+  //    user 消息带查询前缀——useHaiku 关闭时 CC 不发 tool_choice，靠这三个信号组合识别。
   strictMatch(body) {
-    return toolChoiceForcesWebSearch(body) && hasStrictWebSearchTool(body);
+    return (
+      (toolChoiceForcesWebSearch(body) && hasStrictWebSearchTool(body)) ||
+      (hasSystemMarker(body) && hasStrictWebSearchTool(body) && lastUserMessageHasQueryPrefix(body))
+    );
   },
 };
 

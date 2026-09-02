@@ -103,15 +103,19 @@ function randomServerToolUseId(): string {
   return `srvtoolu_${randomMessageId().slice(4)}`;
 }
 
-// 设计文档第 9.3 节：父级 Sonnet 收到的 tool_result 是 CC 客户端从 web_search_tool_result
-// 内容块里提取 title/url 拼出来的固定模板文本，不是 Haiku 自己生成的自然语言。这里合成的
-// 两个内容块都是完整块、非增量——跟 webfetch 的纯文本 delta 流式不同，官方文档
+// 设计文档第 9.3、11 节：父级 Sonnet 收到的 tool_result 里，Links 列表是 CC 客户端从
+// web_search_tool_result 内容块提取 title/url 拼出来的固定模板文本；第三块 text 的内容会
+// 原文逐字穿透到 tool_result，主循环拿它作答（
+// doc/report/research/2026-09-02_websearch客户端全链路与拦截点分析.md 第 3.1 节实测确认）。
+// 前两个内容块都是完整块、非增量——跟 webfetch 的纯文本 delta 流式不同，官方文档
 // （doc/ref/2026-09-02_websearch-haiku子请求实测抓包.md 第 6 节）确认 web_search_tool_result
-// 不拆 delta，一次性给出完整 content 数组。
+// 不拆 delta，一次性给出完整 content 数组；第三个 text 块本身仍然是"一次性给出完整
+// summary"的单个 delta，不逐字拆，跟 webfetch 的多次增量 delta 不同。
 export function buildWebSearchSyntheticSSE(
   originalModel: string,
   query: string,
-  results: Array<{ title: string; url: string }>,
+  sources: Array<{ title: string; url: string }>,
+  summary: string,
 ): string {
   const messageId = randomMessageId();
   const toolUseId = randomServerToolUseId();
@@ -149,10 +153,29 @@ export function buildWebSearchSyntheticSSE(
     content_block: {
       type: "web_search_tool_result",
       tool_use_id: toolUseId,
-      content: results.map((r) => ({ type: "web_search_result", url: r.url, title: r.title })),
+      content: sources.map((r) => ({ type: "web_search_result", url: r.url, title: r.title })),
     },
   });
   const searchResultStop = sseEvent("content_block_stop", { type: "content_block_stop", index: 1 });
+
+  // 第三块（index 2）仅当 summary 非空才发——responseSynthesizer 据 WebSearchResult.summary
+  // 是否为空字符串决定发不发这一块，空字符串是汇总阶段降级的合法返回（设计第 4、13 节），
+  // 效果等价于原生 WebSearch（只有链接列表，没有综述正文）。索引沿用现有代码"按实际写出的
+  // 块顺序累加"的写法，summary 为空时不需要为空场景特殊处理索引。
+  const summaryBlocks =
+    summary.length > 0
+      ? sseEvent("content_block_start", {
+          type: "content_block_start",
+          index: 2,
+          content_block: { type: "text", text: "" },
+        }) +
+        sseEvent("content_block_delta", {
+          type: "content_block_delta",
+          index: 2,
+          delta: { type: "text_delta", text: summary },
+        }) +
+        sseEvent("content_block_stop", { type: "content_block_stop", index: 2 })
+      : "";
 
   const messageDelta = sseEvent("message_delta", {
     type: "message_delta",
@@ -172,6 +195,7 @@ export function buildWebSearchSyntheticSSE(
     serverToolUseStop +
     searchResultStart +
     searchResultStop +
+    summaryBlocks +
     messageDelta +
     messageStop
   );
@@ -180,9 +204,10 @@ export function buildWebSearchSyntheticSSE(
 export function buildWebSearchSyntheticResponse(
   originalModel: string,
   query: string,
-  results: Array<{ title: string; url: string }>,
+  sources: Array<{ title: string; url: string }>,
+  summary: string,
 ): Response {
-  const sse = buildWebSearchSyntheticSSE(originalModel, query, results);
+  const sse = buildWebSearchSyntheticSSE(originalModel, query, sources, summary);
   return new Response(sse, {
     status: 200,
     headers: { "content-type": "text/event-stream" },

@@ -6,10 +6,19 @@ hand, the fastest path is: open a terminal in this project's directory and
 ask your agent something like *"read INSTALL.md and set this up for me."*
 It has everything it needs below.
 
-There is no package to install and no daemon to run. This project has **zero
-runtime dependencies** — it's a single script that gets loaded into the
-`claude` process itself. Setup is: fill in a config file, then tell your
-shell to load that script whenever you run `claude`.
+There is no package to install and no daemon to run — this project has
+**zero runtime dependencies**, for both the `webfetch` and `websearch`
+targets. It's a single script that gets loaded into the `claude` process
+itself; `websearch`'s use of `turndown` (to convert fetched pages to
+markdown) ships as a pre-built, vendored bundle committed to this repo
+rather than an npm package resolved at load time — real Claude Code builds
+run as a single compiled binary whose embedded runtime can't resolve npm
+packages for an externally preloaded script, only plain file paths, so a
+live `node_modules` dependency wouldn't actually work there. Setup is: fill
+in a config file, then tell your shell to load that script whenever you run
+`claude`. `websearch` additionally manages a local SearXNG Docker container
+by default for retrieval — only needed if you enable it; Docker is not
+required for `webfetch`.
 
 ## 1. Get the project onto disk somewhere permanent
 
