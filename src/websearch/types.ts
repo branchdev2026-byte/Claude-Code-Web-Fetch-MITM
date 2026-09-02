@@ -45,7 +45,6 @@ export interface PoolEntry {
 // 规划阶段（planner.ts，第 5.1 节）输出。
 export interface PlannerOutput {
   subQueries: string[];
-  timeBudgetMs: number;
   roundGuidance: number;
   fetchTopN: number;
 }

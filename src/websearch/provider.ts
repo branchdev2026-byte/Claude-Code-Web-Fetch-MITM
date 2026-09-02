@@ -25,9 +25,13 @@ function mergeEnrichedIntoPool(pool: PoolEntry[], enriched: PoolEntry[]): PoolEn
   return pool.map((entry) => enrichedByUrl.get(normalizeUrl(entry.url)) ?? entry);
 }
 
-// 反思是固定环节：循环体每次进入都会跑一次反思，不由外部轮数计数器前置门控——是否继续由
-// 反思自己的输出（sufficient/refinedQueries）决定；时间预算检查是唯一的停止条件，不需要
-// 额外的"最大轮数"兜底（设计第 5 节步骤 3、4）。
+// 反思是固定环节：循环体每次进入都会跑一次反思，不由外部轮数计数器前置门控。是否继续
+// 完全由反思自己这一轮的输出（sufficient/refinedQueries）决定，不受任何时间预算约束——
+// 某一环节要不要执行，只能由上一环节的输出决定；一个环节不可能自己判断自己要不要执行
+// （判断本身就意味着已经在执行了），更不能被一个跟 AI 判断无关的外部时钟打断（设计第 5、
+// 13 节，2026-09-02 修订）。唯一的外部兜底是 interceptor.ts 的 WEBSEARCH_HARD_TIMEOUT_MS
+// ——进程级硬性 fail-safe，防止真正意义上的死循环/网络挂死拖死 claude 进程，不是这条循环
+// 正常路径的一部分，触发了算异常。
 async function reflectLoop(
   query: string,
   planOutput: PlannerOutput,
@@ -35,14 +39,11 @@ async function reflectLoop(
   reasonConfig: ReasonLlmConfig,
   backend: SearchBackend,
   signal: AbortSignal,
-  deadline: number,
 ): Promise<PoolEntry[]> {
   let pool = initialPool;
   let round = 1;
 
   while (true) {
-    if (Date.now() >= deadline) break;
-
     let reflection: Awaited<ReturnType<typeof reflect>>;
     try {
       reflection = await reflect(query, planOutput.roundGuidance, round, pool, reasonConfig, signal);
@@ -64,10 +65,8 @@ async function reflectLoop(
 export function createWebSearchProvider(config: WebSearchProviderConfig): WebSearchProvider {
   return {
     async search(query: string, signal: AbortSignal) {
-      const planStartedAt = Date.now();
       // 规划必须先跑，无法并发——后面所有阶段都依赖它的输出（设计第 9 节）。
       const planOutput = await plan(query, config.reason, signal);
-      const deadline = planStartedAt + planOutput.timeBudgetMs;
 
       const round1Hits = await Promise.all(planOutput.subQueries.map((q) => config.backend.search(q, signal)));
       const flatRound1 = round1Hits.flat();
@@ -81,7 +80,7 @@ export function createWebSearchProvider(config: WebSearchProviderConfig): WebSea
       // ——发起但不 await，两条分支同时跑，最后再合并。
       const enrichPromise = enrichTop(pool, planOutput.fetchTopN, query, config.summary, signal);
 
-      pool = await reflectLoop(query, planOutput, pool, config.reason, config.backend, signal, deadline);
+      pool = await reflectLoop(query, planOutput, pool, config.reason, config.backend, signal);
 
       const enriched = await enrichPromise;
       pool = mergeEnrichedIntoPool(pool, enriched);

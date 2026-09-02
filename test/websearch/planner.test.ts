@@ -30,14 +30,12 @@ describe("plan", () => {
   test("parses a well-formed planner response", async () => {
     mockResponse = JSON.stringify({
       subQueries: ["bun release notes", "bun changelog"],
-      timeBudgetMs: 8000,
       roundGuidance: 2,
       fetchTopN: 1,
     });
     const result = await plan("bun latest release", config, AbortSignal.timeout(5000));
     expect(result).toEqual({
       subQueries: ["bun release notes", "bun changelog"],
-      timeBudgetMs: 8000,
       roundGuidance: 2,
       fetchTopN: 1,
     });
@@ -46,24 +44,22 @@ describe("plan", () => {
   test("falls back to internal defaults for malformed numeric fields, does not throw", async () => {
     mockResponse = JSON.stringify({
       subQueries: ["a query"],
-      timeBudgetMs: "not a number",
       roundGuidance: null,
       // fetchTopN missing entirely
     });
     const result = await plan("query", config, AbortSignal.timeout(5000));
     expect(result.subQueries).toEqual(["a query"]);
-    expect(typeof result.timeBudgetMs).toBe("number");
     expect(typeof result.roundGuidance).toBe("number");
     expect(typeof result.fetchTopN).toBe("number");
   });
 
   test("throws when subQueries is missing", async () => {
-    mockResponse = JSON.stringify({ timeBudgetMs: 5000, roundGuidance: 1, fetchTopN: 0 });
+    mockResponse = JSON.stringify({ roundGuidance: 1, fetchTopN: 0 });
     await expect(plan("query", config, AbortSignal.timeout(5000))).rejects.toThrow(/subQueries/);
   });
 
   test("throws when subQueries is an empty array", async () => {
-    mockResponse = JSON.stringify({ subQueries: [], timeBudgetMs: 5000, roundGuidance: 1, fetchTopN: 0 });
+    mockResponse = JSON.stringify({ subQueries: [], roundGuidance: 1, fetchTopN: 0 });
     await expect(plan("query", config, AbortSignal.timeout(5000))).rejects.toThrow(/subQueries/);
   });
 

@@ -7,13 +7,12 @@ export function buildPlannerPrompt(query: string): string {
 Query: ${query}
 
 Think about what kind of query this is:
-- Factual or time-sensitive (e.g. current price, latest version, today's date, a single fact): needs few search angles, a short time budget, and usually does not need full-page fetching of any source.
-- Comparative, multi-aspect, or needs precise figures to back up claims (e.g. "compare X and Y", "pros and cons of Z", "detailed spec of W"): needs broader coverage across a few search angles, a longer time budget, and benefits from fetching the full text of a few top sources.
+- Factual or time-sensitive (e.g. current price, latest version, today's date, a single fact): needs few search angles, usually one round is enough, and usually does not need full-page fetching of any source.
+- Comparative, multi-aspect, or needs precise figures to back up claims (e.g. "compare X and Y", "pros and cons of Z", "detailed spec of W"): needs broader coverage across a few search angles, likely several rounds of refinement, and benefits from fetching the full text of a few top sources.
 
 Output a single JSON object with exactly these fields, nothing else:
 {
   "subQueries": string[],       // 2 to 4 short, SEO-style keyword phrases (not full sentences) each covering a distinct angle of the query
-  "timeBudgetMs": number,       // how many milliseconds this query is worth spending end-to-end, your own judgment, no fixed upper bound
   "roundGuidance": number,      // roughly how many search rounds this query is worth, as guidance for a later reflection step (not a hard cap)
   "fetchTopN": number           // how many of the top-ranked results are worth fetching in full for deeper detail; 0 means none are worth it
 }

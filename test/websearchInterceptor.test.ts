@@ -81,7 +81,7 @@ mock.module("../src/realFetch", () => ({
       const prompt = body.messages?.[0]?.content ?? "";
       if (prompt.includes("planning stage")) {
         if (wsState.plannerHttpError) return new Response("server error", { status: 500 });
-        return jsonLlmResponse(JSON.stringify({ subQueries: ["q1"], timeBudgetMs: 10_000, roundGuidance: 1, fetchTopN: 0 }));
+        return jsonLlmResponse(JSON.stringify({ subQueries: ["q1"], roundGuidance: 1, fetchTopN: 0 }));
       }
       if (prompt.includes("reflection stage")) {
         return jsonLlmResponse(JSON.stringify({ sufficient: true, refinedQueries: [] }));

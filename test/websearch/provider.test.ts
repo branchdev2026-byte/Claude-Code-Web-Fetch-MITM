@@ -2,8 +2,9 @@ import { describe, expect, mock, test } from "bun:test";
 import type { SearchBackend } from "../../src/websearch/backends/searxng";
 import type { RawHit, ReasonLlmConfig, SummaryLlmConfig } from "../../src/websearch/types";
 
-// 设计文档第 5、9 节。被测对象是 provider.ts 自己的编排逻辑（并发发起时机、时间预算提前
-// 停止、收尾合并、fail-open 触发条件），驱动的是 planner/reflect/enrich/compose 的**真实
+// 设计文档第 5、9 节。被测对象是 provider.ts 自己的编排逻辑（并发发起时机、反思循环是否
+// 继续只由反思自己的判断决定、收尾合并、fail-open 触发条件），驱动的是 planner/reflect/
+// enrich/compose 的**真实
 // 实现**——backend 直接传一个手写 fake（createWebSearchProvider 的 config.backend 只是个
 // 普通参数，不是模块，不需要 mock），LLM 与页面抓取统一走一个 src/realFetch mock，按
 // URL/prompt 内容分派到对应阶段的canned 响应。
@@ -85,7 +86,7 @@ function hit(overrides: Partial<RawHit> = {}): RawHit {
 
 function freshState(overrides: Partial<MockState> = {}): MockState {
   return {
-    plannerResponse: () => JSON.stringify({ subQueries: ["q1"], timeBudgetMs: 10_000, roundGuidance: 1, fetchTopN: 1 }),
+    plannerResponse: () => JSON.stringify({ subQueries: ["q1"], roundGuidance: 1, fetchTopN: 1 }),
     reflectResponse: () => JSON.stringify({ sufficient: true, refinedQueries: [] }),
     extractResponse: () => "- extracted fact",
     composeResponse: () => "a summary",
@@ -129,19 +130,44 @@ describe("createWebSearchProvider().search orchestration", () => {
     expect(events.indexOf("enrich-call")).toBeLessThan(events.indexOf("reflect-call-end"));
   });
 
-  test("time budget exhausted before the reflect loop starts: reflect is never called, still composes normally", async () => {
+  test("reflect loop keeps going across multiple rounds purely on its own judgment, no time-based cutoff", async () => {
+    // 2026-09-02 设计修订：反思循环是否继续，只能由反思自己这一轮的判断决定，不受任何
+    // 时间预算约束——这里让反思连续 3 轮判定"不够"，第 4 轮才判定"够了"，验证循环确实
+    // 跑满了这几轮而不是被某个外部计时器提前打断。
     events = [];
+    let reflectCallCount = 0;
     state = freshState({
-      plannerResponse: () => JSON.stringify({ subQueries: ["q1"], timeBudgetMs: 0, roundGuidance: 1, fetchTopN: 0 }),
+      reflectResponse: () => {
+        reflectCallCount++;
+        if (reflectCallCount < 4) {
+          return JSON.stringify({ sufficient: false, refinedQueries: [`refine-${reflectCallCount}`] });
+        }
+        return JSON.stringify({ sufficient: true, refinedQueries: [] });
+      },
+    });
+    let searchCallCount = 0;
+    const backend = fakeBackend(async () => {
+      searchCallCount++;
+      return [hit()];
     });
 
+    const provider = createWebSearchProvider({ backend, reason: reasonConfig, summary: summaryConfig, maxSources: 20 });
+    await provider.search("query", AbortSignal.timeout(5000));
+
+    expect(events.filter((e) => e === "reflect-call-start")).toHaveLength(4);
+    expect(searchCallCount).toBe(4); // 第 1 轮 + 3 次补搜（第 4 次反思判定够了，不再补搜）
+  });
+
+  test("refinedQueries becomes empty even though sufficient=false: loop still stops (no infinite loop on empty refinement)", async () => {
+    events = [];
+    state = freshState({
+      reflectResponse: () => JSON.stringify({ sufficient: false, refinedQueries: [] }),
+    });
     const backend = fakeBackend(async () => [hit()]);
     const provider = createWebSearchProvider({ backend, reason: reasonConfig, summary: summaryConfig, maxSources: 20 });
-    const result = await provider.search("query", AbortSignal.timeout(5000));
+    await provider.search("query", AbortSignal.timeout(5000));
 
-    expect(events.filter((e) => e.startsWith("reflect-call"))).toHaveLength(0);
-    expect(result.summary).toBe("a summary");
-    expect(result.sources).toHaveLength(1);
+    expect(events.filter((e) => e === "reflect-call-start")).toHaveLength(1);
   });
 
   test("sufficient=true stops the loop without firing a refinement search round", async () => {
@@ -165,7 +191,7 @@ describe("createWebSearchProvider().search orchestration", () => {
   test("fetchTopN=0 still produces valid sources/summary (enrich executes with zero items, not short-circuited)", async () => {
     events = [];
     state = freshState({
-      plannerResponse: () => JSON.stringify({ subQueries: ["q1"], timeBudgetMs: 10_000, roundGuidance: 1, fetchTopN: 0 }),
+      plannerResponse: () => JSON.stringify({ subQueries: ["q1"], roundGuidance: 1, fetchTopN: 0 }),
     });
     const backend = fakeBackend(async () => [hit()]);
     const provider = createWebSearchProvider({ backend, reason: reasonConfig, summary: summaryConfig, maxSources: 20 });
@@ -184,7 +210,7 @@ describe("createWebSearchProvider().search orchestration", () => {
     // degrades back to its original content) still lets the overall search() complete
     // normally instead of propagating the failure.
     state = freshState({
-      plannerResponse: () => JSON.stringify({ subQueries: ["q1"], timeBudgetMs: 10_000, roundGuidance: 1, fetchTopN: 2 }),
+      plannerResponse: () => JSON.stringify({ subQueries: ["q1"], roundGuidance: 1, fetchTopN: 2 }),
       pageResponse: () => new Response("not found", { status: 404 }),
     });
     const backend = fakeBackend(async () => [hit({ url: "https://example.com/a" }), hit({ url: "https://example.com/b" })]);

@@ -4,7 +4,8 @@ import type { PlannerOutput, ReasonLlmConfig } from "./types";
 
 // 设计文档第 5.1、10.3 节。规划阶段数值字段解析失败时按内部默认值兜底，是对模型输出格式
 // 异常的防御，不是给业务决策设上限；`subQueries` 解析失败则整体抛错（fail-open，第 13 节）。
-const DEFAULT_TIME_BUDGET_MS = 15_000;
+// 不再输出 timeBudgetMs——反思循环是否继续只由反思自己的判断决定，不受任何时间预算门控
+// （2026-09-02 设计修订，见 design v2 第 5、13 节）。
 const DEFAULT_ROUND_GUIDANCE = 1;
 const DEFAULT_FETCH_TOP_N = 0;
 const PLANNER_TEMPERATURE = 0.3;
@@ -45,7 +46,6 @@ export async function plan(query: string, config: ReasonLlmConfig, signal: Abort
 
   return {
     subQueries: parsed.subQueries,
-    timeBudgetMs: coerceNumber(parsed.timeBudgetMs, DEFAULT_TIME_BUDGET_MS),
     roundGuidance: coerceNumber(parsed.roundGuidance, DEFAULT_ROUND_GUIDANCE),
     fetchTopN: coerceNumber(parsed.fetchTopN, DEFAULT_FETCH_TOP_N),
   };
