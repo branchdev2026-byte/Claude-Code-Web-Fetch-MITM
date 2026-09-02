@@ -18,3 +18,14 @@ search:
   formats:
     - html
     - json
+
+# 2026-09-02 实测发现：duckduckgo 持续报 CAPTCHA（SearxEngineCaptchaException），brave 持续
+# 429（SearxEngineTooManyRequestsException, suspended_time=180）——都是这两家对匿名/高频抓取的
+# 主动封锁，不是配置错误，换 IP/加 key 也治标不治本。禁用这两个不稳定引擎，避免它们在候选池的
+# "跨引擎命中数"排序信号（design 第 7 节）里贡献噪声、以及拖慢单轮检索的墙钟耗时（它们各自要
+# 等到超时/出错才放行其他引擎的结果一起返回）。
+engines:
+  - name: duckduckgo
+    disabled: true
+  - name: brave
+    disabled: true
